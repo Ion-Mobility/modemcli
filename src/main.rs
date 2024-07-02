@@ -14,11 +14,12 @@ fn main() {
 
     // Specify the interface and method to call for getting location
     let interface = "org.freedesktop.ModemManager1.Modem.Location";
-    let method = "GetLocation";
 
     loop {
         // Prepare the D-Bus message
-        let msg = Message::new_method_call(destination, path, interface, method)
+        let gpsmethod = "GetLocation";
+
+        let msg = Message::new_method_call(destination, path, interface, gpsmethod)
         .expect("Failed to create method call");
         // Send the message and await the response
         let reply = c
@@ -28,8 +29,25 @@ fn main() {
         // Parse the response to get the Args
         let responds: Vec<MessageItem> = reply.get_items();
         for respond in responds.iter() {
-            println!("{:?}", respond)
+            match respond {
+                MessageItem::Dict(dict) => {
+                    let a = dict.to_vec();
+                    for (x, y) in a {
+                        if let MessageItem::UInt32(id) = x {
+                            if id == 4 {
+                                if let MessageItem::Variant(var) = y {
+                                    if let MessageItem::Str(nmea) = *var {
+                                        println!("NMEA: {}", nmea);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {
+                }
+            }
         }
-        thread::sleep(Duration::from_millis(1000))
+        thread::sleep(Duration::from_millis(100))
     }
 }
