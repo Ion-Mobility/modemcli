@@ -1,5 +1,5 @@
 [package]
-name = "ion_modemcli"
+name = "modemhandler"
 version = "0.1.0"
 edition = "2021"
 repository = "github.com:Ion-Mobility/modemcli.git"
