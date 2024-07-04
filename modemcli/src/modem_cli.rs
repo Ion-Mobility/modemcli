@@ -57,7 +57,7 @@ impl IonModemCli {
         self.ready
     }
 
-    fn get_modem_properties(&self, object: &str, prop: &str) -> u32 {
+    fn get_modem_properties(&self, object: &str, prop: &str) -> Vec<MessageItem> {
         // Connect to the system bus
         let conn = Connection::new_system();
 
@@ -77,26 +77,9 @@ impl IonModemCli {
             .expect("REASON")
             .send_with_reply_and_block(msg, Duration::from_secs(2));
         println!("{:?}", reply);
-        let enabled_variant = reply.expect("REASON").get1::<MessageItem>();
-        println!("{:?}", enabled_variant);
-
-        if let Some(MessageItem::Variant(dict)) = enabled_variant {
-            match *dict {
-                MessageItem::UInt32(id) => {
-                    println!("UValue: {}", id);
-                    return id;
-                }
-                MessageItem::Int32(id) => {
-                    println!("SValue: {}", id);
-                    return id as u32;
-                }
-                MessageItem::Struct(ref id) => {
-                    println!("{:?}", id);
-                }
-                _ => {}
-            }
-        }
-        0
+        let enabled_variant = reply.expect("REASON").get_items();
+        // println!("{:?}", enabled_variant);
+        enabled_variant
     }
 
     pub fn set_modem_properties(&self) -> bool {
@@ -130,14 +113,66 @@ impl IonModemCli {
     }
 
     pub fn is_location_enabled(&self) -> bool {
-        (self.get_modem_properties("org.freedesktop.ModemManager1.Modem.Location", "Enabled") & 4)
-            != 0
+        let results = self.get_modem_properties("org.freedesktop.ModemManager1.Modem.Location", "Enabled");
+        for result in results.iter() {
+            println!("{:?}", result);
+            match result {
+                MessageItem::Variant(ret_variant) => {
+                    let MessageItem::UInt32(locationmask) = **ret_variant else { return false };
+                    println!("Mask: {}", locationmask);
+                    return (locationmask & 4) != 0;
+                },
+                _ => { return false}
+            }
+        }
+        false
     }
+
     pub fn is_modem_enabled(&self) -> bool {
-        (self.get_modem_properties("org.freedesktop.ModemManager1.Modem", "State") & 8) != 0
+        let results = self.get_modem_properties("org.freedesktop.ModemManager1.Modem", "State");
+        for result in results.iter() {
+            println!("{:?}", result);
+            match result {
+                MessageItem::Variant(ret_variant) => {
+                    let MessageItem::Int32(modemmask) = **ret_variant else { return false };
+                    return (modemmask & 8) != 0;
+                },
+                _ => { return false}
+            }
+        }
+        false
     }
+
     pub fn get_signal_quality(&self) -> u32 {
-        self.get_modem_properties("org.freedesktop.ModemManager1.Modem", "SignalQuality")
+        // self.get_modem_properties("org.freedesktop.ModemManager1.Modem", "SignalQuality")
+        0
+    }
+
+    pub fn get_signal_strength(&self) -> f32 {
+        let results = self.get_modem_properties("org.freedesktop.ModemManager1.Modem.Signal", "Lte");
+        for result in results.iter() {
+            match result {
+                MessageItem::Variant(ret_variant) => {
+                    if let MessageItem::Dict(ref dict) = **ret_variant {
+                        let a = dict.to_vec();
+                        for (x, y) in a {
+                            if x == "rsrp".into() {
+                                match y {
+                                    MessageItem::Variant(rsrpval) => {
+                                        let MessageItem::Double(rsrpret) = *rsrpval else { return 0.0 };
+                                        return rsrpret as f32;
+                                    }
+                                    _ => {return 0.0}
+                                }
+                            }
+                        }
+                    }
+
+                },
+                _ => { return 0.0}
+            }
+        }
+        0.0
     }
 
     pub fn get_location(&self) -> String {
@@ -158,25 +193,30 @@ impl IonModemCli {
 
             // Send the message and await the response
             let reply = c.send_with_reply_and_block(msg, Duration::from_secs(2));
-
-            // Parse the response to get the Args
-            let responds: Vec<MessageItem> = reply.expect("REASON").get_items();
-            for respond in responds.iter() {
-                if let MessageItem::Dict(dict) = respond {
-                    let a = dict.to_vec();
-                    for (x, y) in a {
-                        if let MessageItem::UInt32(id) = x {
-                            if id == 4 {
-                                if let MessageItem::Variant(var) = y {
-                                    if let MessageItem::Str(nmea) = *var {
-                                        nmea_str = nmea;
+            match reply {
+                Ok(result) => {
+                    // Parse the response to get the Args
+                    let responds: Vec<MessageItem> = result.get_items();
+                    for respond in responds.iter() {
+                        if let MessageItem::Dict(dict) = respond {
+                            let a = dict.to_vec();
+                            for (x, y) in a {
+                                if let MessageItem::UInt32(id) = x {
+                                    if id == 4 {
+                                        if let MessageItem::Variant(var) = y {
+                                            if let MessageItem::Str(nmea) = *var {
+                                                nmea_str = nmea;
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
+                _ => {}
             }
+
         }
 
         nmea_str

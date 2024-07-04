@@ -10,7 +10,7 @@ fn main() {
 
     loop {
         if modem_cli.waiting_for_ready() {
-            // println!("Location: {}, ModemEnable: {}, SignalQuality: {}", modem_cli.is_location_enabled(), modem_cli.is_modem_enabled(), modem_cli.get_signal_quality());
+            println!("Location: {}, ModemEnable: {}, SignalQuality: {}", modem_cli.is_location_enabled(), modem_cli.is_modem_enabled(), modem_cli.get_signal_strength());
             println!("{}", modem_cli.get_location());
         } else {
             println!("Modem is not ready");
