@@ -1,10 +1,10 @@
 [package]
-name = "ion_modemcli"
+name = "modemcli"
 version = "0.1.0"
 edition = "2021"
-repository = "github.com:Ion-Mobility/modemcli.git"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-modemcli= { path = "modemcli" }
+dbus = "0.9.7"
+mmdbus = "1.18.6"

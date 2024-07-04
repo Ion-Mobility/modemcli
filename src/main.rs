@@ -1,8 +1,7 @@
-pub mod libs;
 use std::thread;
 use std::time::Duration;
 
-use libs::modem_cli::*;
+use modemcli::modem_cli::*;
 
 fn main() {
     let mut modem_cli = IonModemCli::default();
