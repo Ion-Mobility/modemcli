@@ -5,7 +5,7 @@ use std::time::Duration;
 use libs::modem_cli::*;
 
 fn main() {
-    let mut modem_cli = IonModemCli::new_default();
+    let mut modem_cli = IonModemCli::default();
 
     println!("Modem CLI: {:?}", modem_cli);
 
