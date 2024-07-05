@@ -48,17 +48,6 @@ impl IonModemCli {
         }
     }
 
-    pub fn is_ready(&self) -> bool {
-        self.ready
-    }
-
-    pub fn waiting_for_ready(&mut self) -> bool {
-        if !self.ready && self.modem_preparing() {
-            self.ready = true;
-        }
-        self.ready
-    }
-
     fn get_modem_properties(&self, object: &str, prop: &str) -> Result<Vec<MessageItem>, Box<dyn Error>> {
         // Connect to the system bus
         let conn = Connection::new_system()?;
@@ -76,11 +65,6 @@ impl IonModemCli {
         println!("{:?}", enabled_variant);
         
         Ok(enabled_variant)
-    }
-
-    pub fn set_modem_properties(&self) -> bool {
-        // Placeholder implementation
-        false
     }
 
     fn modem_path_detection(&self) -> Result<String, Box<dyn Error>> {
@@ -228,5 +212,16 @@ impl IonModemCli {
         }
 
         nmea_str
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.ready
+    }
+
+    pub fn waiting_for_ready(&mut self) -> bool {
+        if !self.ready && self.modem_preparing() {
+            self.ready = true;
+        }
+        self.ready
     }
 }
