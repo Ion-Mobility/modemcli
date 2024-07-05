@@ -3,8 +3,11 @@ use dbus::blocking::stdintf::org_freedesktop_dbus::ObjectManager;
 use dbus::blocking::BlockingSender;
 use dbus::blocking::Connection;
 use dbus::message::Message;
-use dbus::Error;
 use std::time::Duration;
+use std::error::Error;
+use dbus::blocking::Proxy;
+use std::collections::HashMap;
+use dbus::arg::RefArg;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct IonModemCli {
@@ -36,14 +39,13 @@ impl IonModemCli {
     }
 
     fn modem_preparing(&mut self) -> bool {
-        // Placeholder implementation
-        let _modempath = self.modem_path_detection();
-        if !_modempath.is_empty() {
-            println!("Just found an modem available, so update itself");
-            self.modem = _modempath;
-            return true;
+        match self.modem_path_detection() {
+            Ok(_modempath) => {
+                self.modem = _modempath;
+                return true;
+            }
+            _ => {return false}
         }
-        false
     }
 
     pub fn is_ready(&self) -> bool {
@@ -57,29 +59,23 @@ impl IonModemCli {
         self.ready
     }
 
-    fn get_modem_properties(&self, object: &str, prop: &str) -> Vec<MessageItem> {
+    fn get_modem_properties(&self, object: &str, prop: &str) -> Result<Vec<MessageItem>, Box<dyn Error>> {
         // Connect to the system bus
-        let conn = Connection::new_system();
+        let conn = Connection::new_system()?;
 
         let interface = "org.freedesktop.DBus.Properties";
 
         // Prepare the D-Bus message to get the Enabled property
-        let msg = Message::new_method_call(&self.destination, &self.modem, interface, "Get")
-            .map_err(|e| {
-                eprintln!("Failed to create method call: {}", e);
-                Error::new_custom("MethodCall", "Failed to create method call")
-            })
-            .expect("REASON")
+        let msg = Message::new_method_call(&self.destination, &self.modem, interface, "Get")?
             .append2(object, prop);
 
         // Send the message and await the response
-        let reply = conn
-            .expect("REASON")
-            .send_with_reply_and_block(msg, Duration::from_secs(2));
+        let reply = conn.send_with_reply_and_block(msg, Duration::from_secs(2))?;
         println!("{:?}", reply);
-        let enabled_variant = reply.expect("REASON").get_items();
-        // println!("{:?}", enabled_variant);
-        enabled_variant
+        let enabled_variant = reply.get_items();
+        println!("{:?}", enabled_variant);
+        
+        Ok(enabled_variant)
     }
 
     pub fn set_modem_properties(&self) -> bool {
@@ -87,19 +83,17 @@ impl IonModemCli {
         false
     }
 
-    fn modem_path_detection(&self) -> String {
+    fn modem_path_detection(&self) -> Result<String, Box<dyn Error>> {
         // Initialize modempath as an empty string
         let mut modempath: String = String::new();
 
         // Connect to the D-Bus system bus
-        let connection = Connection::new_system().expect("Failed to connect to the system bus");
+        let connection = Connection::new_system()?;
 
         // Get managed objects
-        let proxy =
-            connection.with_proxy(&self.destination, &self.object, Duration::from_millis(5000));
-        let managed_objects = proxy
-            .get_managed_objects()
-            .expect("Failed to get managed objects");
+        let proxy: Proxy<&Connection> = connection.with_proxy(&self.destination, &self.object, Duration::from_millis(5000));
+        let managed_objects: HashMap<dbus::Path<'_>, HashMap<String, HashMap<String, dbus::arg::Variant<Box<dyn RefArg>>>>>
+            = proxy.get_managed_objects()?;
 
         // Iterate over the managed objects and find the modem objects
         for (path, interfaces) in managed_objects {
@@ -109,37 +103,46 @@ impl IonModemCli {
             }
         }
 
-        modempath
+        Ok(modempath)
     }
 
     pub fn is_location_enabled(&self) -> bool {
-        let results = self.get_modem_properties("org.freedesktop.ModemManager1.Modem.Location", "Enabled");
-        for result in results.iter() {
-            println!("{:?}", result);
-            match result {
-                MessageItem::Variant(ret_variant) => {
-                    let MessageItem::UInt32(locationmask) = **ret_variant else { return false };
-                    println!("Mask: {}", locationmask);
-                    return (locationmask & 4) != 0;
-                },
-                _ => { return false}
+        match self.get_modem_properties("org.freedesktop.ModemManager1.Modem.Location", "Enabled") {
+            Ok(results) => {
+                for result in results.iter() {
+                    println!("{:?}", result);
+                    match result {
+                        MessageItem::Variant(ret_variant) => {
+                            let MessageItem::UInt32(locationmask) = **ret_variant else { return false };
+                            println!("Mask: {}", locationmask);
+                            return (locationmask & 4) != 0;
+                        },
+                        _ => {return false}
+                    }
+                }
             }
+            _ => {return false}
         }
         false
     }
 
     pub fn is_modem_enabled(&self) -> bool {
-        let results = self.get_modem_properties("org.freedesktop.ModemManager1.Modem", "State");
-        for result in results.iter() {
-            println!("{:?}", result);
-            match result {
-                MessageItem::Variant(ret_variant) => {
-                    let MessageItem::Int32(modemmask) = **ret_variant else { return false };
-                    return (modemmask & 8) != 0;
-                },
-                _ => { return false}
+        match self.get_modem_properties("org.freedesktop.ModemManager1.Modem", "State") {
+            Ok(results) => {
+                for result in results.iter() {
+                    println!("{:?}", result);
+                    match result {
+                        MessageItem::Variant(ret_variant) => {
+                            let MessageItem::Int32(modemmask) = **ret_variant else { return false };
+                            return (modemmask & 8) != 0;
+                        },
+                        _ => {return false}
+                    }
+                }
             }
+            _ => {return false}
         }
+
         false
     }
 
@@ -149,29 +152,34 @@ impl IonModemCli {
     }
 
     pub fn get_signal_strength(&self) -> f32 {
-        let results = self.get_modem_properties("org.freedesktop.ModemManager1.Modem.Signal", "Lte");
-        for result in results.iter() {
-            match result {
-                MessageItem::Variant(ret_variant) => {
-                    if let MessageItem::Dict(ref dict) = **ret_variant {
-                        let a = dict.to_vec();
-                        for (x, y) in a {
-                            if x == "rsrp".into() {
-                                match y {
-                                    MessageItem::Variant(rsrpval) => {
-                                        let MessageItem::Double(rsrpret) = *rsrpval else { return 0.0 };
-                                        return rsrpret as f32;
+        match self.get_modem_properties("org.freedesktop.ModemManager1.Modem.Signal", "Lte") {
+            Ok(results) => {
+                for result in results.iter() {
+                    match result {
+                        MessageItem::Variant(ret_variant) => {
+                            if let MessageItem::Dict(ref dict) = **ret_variant {
+                                let a = dict.to_vec();
+                                for (x, y) in a {
+                                    if x == "rsrp".into() {
+                                        match y {
+                                            MessageItem::Variant(rsrpval) => {
+                                                let MessageItem::Double(rsrpret) = *rsrpval else { return 0.0 };
+                                                return rsrpret as f32;
+                                            }
+                                            _ => {return 0.0}
+                                        }
                                     }
-                                    _ => {return 0.0}
                                 }
                             }
-                        }
+        
+                        },
+                        _ => { return 0.0}
                     }
-
-                },
-                _ => { return 0.0}
+                }
             }
+            _ => {}
         }
+
         0.0
     }
 
