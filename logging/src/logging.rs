@@ -48,36 +48,17 @@ impl MyLogging {
             )))
             .build();
 
-        // Rolling file logger with a size limit
-        let size_trigger = SizeTrigger::new(self.log_file_maxsize);
-        let fixed_window_roller = FixedWindowRoller::builder()
-            .build("mqtt_hmi_{}.gz", 5)
-            .unwrap();
-
-        let compound_policy =
-            CompoundPolicy::new(Box::new(size_trigger), Box::new(fixed_window_roller));
-
-        let rolling_file = RollingFileAppender::builder()
-            .encoder(Box::new(PatternEncoder::new(
-                "[{d(%H:%M:%S%.3f)}][{f}:{L}][{l}] {m}{n}",
-            )))
-            .build(&self.log_file_name, Box::new(compound_policy))
-            .unwrap();
-
         // Configure log4rs
         Config::builder()
             .appender(Appender::builder().build("stdout", Box::new(stdout)))
-            .appender(Appender::builder().build("rolling_file", Box::new(rolling_file)))
             .logger(Logger::builder().build("app::backend::db", LevelFilter::Info))
             .logger(
                 Logger::builder()
-                    .appender("rolling_file")
                     .build("app::requests", LevelFilter::Info),
             )
             .build(
                 Root::builder()
                     .appender("stdout")
-                    .appender("rolling_file")
                     .build(log_level),
             )
             .unwrap()

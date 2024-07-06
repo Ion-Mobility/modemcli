@@ -8,6 +8,7 @@ use std::error::Error;
 use dbus::blocking::Proxy;
 use std::collections::HashMap;
 use dbus::arg::RefArg;
+use log::{debug, trace, error, info, warn};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct IonModemCli {
@@ -60,9 +61,9 @@ impl IonModemCli {
 
         // Send the message and await the response
         let reply = conn.send_with_reply_and_block(msg, Duration::from_secs(2))?;
-        println!("{:?}", reply);
+        trace!("{:?}", reply);
         let enabled_variant = reply.get_items();
-        println!("{:?}", enabled_variant);
+        trace!("{:?}", enabled_variant);
         
         Ok(enabled_variant)
     }
@@ -94,11 +95,11 @@ impl IonModemCli {
         match self.get_modem_properties("org.freedesktop.ModemManager1.Modem.Location", "Enabled") {
             Ok(results) => {
                 for result in results.iter() {
-                    println!("{:?}", result);
+                    trace!("{:?}", result);
                     match result {
                         MessageItem::Variant(ret_variant) => {
                             let MessageItem::UInt32(locationmask) = **ret_variant else { return false };
-                            println!("Mask: {}", locationmask);
+                            trace!("Mask: {}", locationmask);
                             return (locationmask & 4) != 0;
                         },
                         _ => {return false}
@@ -114,7 +115,7 @@ impl IonModemCli {
         match self.get_modem_properties("org.freedesktop.ModemManager1.Modem", "State") {
             Ok(results) => {
                 for result in results.iter() {
-                    println!("{:?}", result);
+                    trace!("{:?}", result);
                     match result {
                         MessageItem::Variant(ret_variant) => {
                             let MessageItem::Int32(modemmask) = **ret_variant else { return false };
@@ -224,4 +225,36 @@ impl IonModemCli {
         }
         self.ready
     }
+
+    pub fn setup_modem_enable(&self, status: bool) -> Result<(), Box<dyn Error>> {
+        let interface = "org.freedesktop.ModemManager1.Modem";
+        let method = "Enable";
+        let connection: Connection = Connection::new_system()?;
+
+        // Prepare the D-Bus message to enable the modem
+        let msg = Message::new_method_call("org.freedesktop.ModemManager1", &self.modem, interface, method)?.append1(status);
+
+        // Send the message and handle the response
+        let _ = connection.send_with_reply_and_block(msg, Duration::from_millis(2000))?;
+
+        Ok(())
+    }
+
+    pub fn setup_location(&self, sources: u32, signal_location: bool) -> Result<(), Box<dyn Error>> {
+        let interface = "org.freedesktop.ModemManager1.Modem.Location";
+        let method = "Setup";
+        let connection: Connection = Connection::new_system()?;
+
+        // Prepare the D-Bus message to setup location
+        let msg = Message::new_method_call("org.freedesktop.ModemManager1", &self.modem, interface, method)?.append2(sources, signal_location);
+
+        // Append arguments to the method call
+        
+
+        // Send the message and handle the response
+        let _ = connection.send_with_reply_and_block(msg, Duration::from_millis(2000))?;
+
+        Ok(())
+    }
+
 }
